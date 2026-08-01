@@ -1,0 +1,8 @@
+syntax: glob
+build/*
+.vs/*
+Debug/*
+Release/*
+CursorIMEIndicator.vcxproj.user
+documents/desktop.ini
+.git/*
