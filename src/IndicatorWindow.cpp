@@ -236,7 +236,7 @@ void IndicatorWindow::OnTimerTick() {
         m_lastMoveTime = now;
     }
     m_lastMouseButtonDown = mouseButtonDown;
-    bool mouseIdleForTwoSeconds = now - m_lastMoveTime >= 2000;
+    bool mouseIdleForOneSecond = now - m_lastMoveTime >= 1000;
 
     // 3. Query current active focused control
     HWND hwndFocus = NULL;
@@ -267,7 +267,7 @@ void IndicatorWindow::OnTimerTick() {
         m_showTimeRemaining = 0;
     }
 
-    if (m_alwaysShow && cursorShowing && mouseIdleForTwoSeconds) {
+    if (m_alwaysShow && cursorShowing && mouseIdleForOneSecond) {
         m_showTimeRemaining = 0;
         m_targetAlpha = 1.0f;
         m_triggerPos = pt;
