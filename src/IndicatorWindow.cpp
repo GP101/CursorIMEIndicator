@@ -1,6 +1,5 @@
 #include "IndicatorWindow.h"
 #include "IMEDetector.h"
-#include <cmath>
 
 #pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "user32.lib")
@@ -26,13 +25,14 @@ IndicatorWindow::IndicatorWindow()
     : m_hWnd(NULL)
     , m_hInstance(NULL)
     , m_isEnabled(true)
+    , m_alwaysShow(false)
     , m_isKorean(false)
     , m_colorLerp(0.0f)
     , m_targetColorLerp(0.0f)
     , m_currentAlpha(0.0f)
     , m_targetAlpha(0.0f)
-    , m_currentScale(1.0f)
     , m_lastMoveTime(0)
+    , m_lastMouseButtonDown(false)
     , m_windowVisible(false)
     , m_lastFocusWnd(NULL)
     , m_lastForegroundWnd(NULL)
@@ -116,6 +116,17 @@ void IndicatorWindow::Show(bool show) {
 void IndicatorWindow::SetEnabled(bool enabled) {
     m_isEnabled = enabled;
     if (!enabled) {
+        m_targetAlpha = 0.0f;
+    }
+}
+
+void IndicatorWindow::SetAlwaysShow(bool alwaysShow) {
+    m_alwaysShow = alwaysShow;
+    if (alwaysShow && m_hWnd) {
+        SetTimer(m_hWnd, 1, TIMER_INTERVAL_ALWAYS_SHOW, NULL);
+        m_currentTimerInterval = TIMER_INTERVAL_ALWAYS_SHOW;
+    } else if (!alwaysShow) {
+        m_showTimeRemaining = 0;
         m_targetAlpha = 0.0f;
     }
 }
@@ -205,14 +216,27 @@ void IndicatorWindow::OnTimerTick() {
     }
 
     // 2. Track mouse position & movement
+    ULONGLONG now = GetTickCount64();
     POINT pt;
     GetCursorPos(&pt);
     bool mouseMoved = false;
     if (pt.x != m_lastCursorPos.x || pt.y != m_lastCursorPos.y) {
         m_lastCursorPos = pt;
-        m_lastMoveTime = GetTickCount64();
         mouseMoved = true;
     }
+
+    bool mouseButtonDown =
+        (GetAsyncKeyState(VK_LBUTTON) & 0x8000) != 0 ||
+        (GetAsyncKeyState(VK_RBUTTON) & 0x8000) != 0 ||
+        (GetAsyncKeyState(VK_MBUTTON) & 0x8000) != 0 ||
+        (GetAsyncKeyState(VK_XBUTTON1) & 0x8000) != 0 ||
+        (GetAsyncKeyState(VK_XBUTTON2) & 0x8000) != 0;
+    bool mouseButtonChanged = mouseButtonDown != m_lastMouseButtonDown;
+    if (mouseMoved || mouseButtonDown || mouseButtonChanged) {
+        m_lastMoveTime = now;
+    }
+    m_lastMouseButtonDown = mouseButtonDown;
+    bool mouseIdleForTwoSeconds = now - m_lastMoveTime >= 2000;
 
     // 3. Query current active focused control
     HWND hwndFocus = NULL;
@@ -233,14 +257,27 @@ void IndicatorWindow::OnTimerTick() {
     bool imeChanged = (currentKorean != m_isKorean);
     if (imeChanged) {
         m_isKorean = currentKorean;
-        m_targetColorLerp = currentKorean ? 1.0f : 0.0f;
-        m_currentScale = 1.35f; // Pop scale animation
+        m_colorLerp = currentKorean ? 1.0f : 0.0f;
+        m_targetColorLerp = m_colorLerp;
     }
 
-    // 5. If mouse is moving, immediately hide the indicator
-    if (mouseMoved) {
+    // 5. If mouse is moving, immediately hide the indicator unless it is pinned on screen.
+    if (mouseMoved && !m_alwaysShow) {
         m_targetAlpha = 0.0f;
         m_showTimeRemaining = 0;
+    }
+
+    if (m_alwaysShow && cursorShowing && mouseIdleForTwoSeconds) {
+        m_showTimeRemaining = 0;
+        m_targetAlpha = 1.0f;
+        m_triggerPos = pt;
+        m_triggerCursorWidth = cursorWidth;
+        m_triggerCursorHeight = cursorHeight;
+        m_triggerXHotspot = xHotspot;
+        m_triggerYHotspot = yHotspot;
+    } else if (m_alwaysShow) {
+        m_showTimeRemaining = 0;
+        m_targetAlpha = 0.0f;
     }
 
     // 6. Detect triggers to show the indicator (Only trigger when NOT moving)
@@ -273,7 +310,7 @@ void IndicatorWindow::OnTimerTick() {
     m_lastCursorHandle = currentCursor;
 
     // Trigger show if focus changes or IME toggles while stationary
-    if (triggerFired && !mouseMoved && cursorShowing) {
+    if (!m_alwaysShow && triggerFired && !mouseMoved && cursorShowing) {
         m_showTimeRemaining = 120; // Show for 120 frames (~2.0 seconds)
         m_targetAlpha = 1.0f;
         m_triggerPos = pt;
@@ -290,29 +327,15 @@ void IndicatorWindow::OnTimerTick() {
     }
 
     // 7. Manage display countdown
-    if (m_showTimeRemaining > 0) {
+    if (!m_alwaysShow && m_showTimeRemaining > 0) {
         m_showTimeRemaining--;
         if (m_showTimeRemaining == 0) {
             m_targetAlpha = 0.0f;
         }
     }
 
-    // 8. Interpolate animations
-    float scaleDiff = 1.0f - m_currentScale;
-    float colorDiff = m_targetColorLerp - m_colorLerp;
-
-    if (m_targetAlpha <= 0.0f) {
-        m_currentAlpha = 0.0f;
-    } else {
-        m_currentAlpha += (m_targetAlpha - m_currentAlpha) * 0.2f;
-    }
-    m_currentScale += scaleDiff * 0.15f;
-    m_colorLerp += colorDiff * 0.15f;
-
-    // Boundary corrections
-    if (std::abs(m_currentAlpha - m_targetAlpha) < 0.005f) m_currentAlpha = m_targetAlpha;
-    if (std::abs(m_currentScale - 1.0f) < 0.005f) m_currentScale = 1.0f;
-    if (std::abs(m_colorLerp - m_targetColorLerp) < 0.005f) m_colorLerp = m_targetColorLerp;
+    // 8. Apply visibility immediately with a fixed badge size and color.
+    m_currentAlpha = m_targetAlpha;
 
     // 9. Position layered window and render
     if (m_currentAlpha > 0.01f) {
@@ -335,16 +358,16 @@ void IndicatorWindow::OnTimerTick() {
             Show(false);
         }
 
-        // When animations are fully settled and the window is hidden, switch to low-CPU idle timer
+        // When animations are fully settled and the window is hidden, reduce polling frequency.
+        UINT idleInterval = m_alwaysShow ? TIMER_INTERVAL_ALWAYS_SHOW : TIMER_INTERVAL_IDLE;
         if (m_showTimeRemaining == 0 &&
             m_currentAlpha == 0.0f &&
             m_targetAlpha == 0.0f &&
-            m_currentScale == 1.0f &&
             m_colorLerp == m_targetColorLerp &&
-            m_currentTimerInterval != TIMER_INTERVAL_IDLE)
+            m_currentTimerInterval != idleInterval)
         {
-            SetTimer(m_hWnd, 1, TIMER_INTERVAL_IDLE, NULL);
-            m_currentTimerInterval = TIMER_INTERVAL_IDLE;
+            SetTimer(m_hWnd, 1, idleInterval, NULL);
+            m_currentTimerInterval = idleInterval;
         }
     }
 }
@@ -412,13 +435,6 @@ void IndicatorWindow::Render() {
     Gdiplus::Color colorShadow((BYTE)(45 * finalAlphaMultiplier), 0, 0, 0);
     Gdiplus::Color colorSoftShadow((BYTE)(25 * finalAlphaMultiplier), 0, 0, 0);
 
-    // Apply scale transform centered on the badge
-    float centerX = 32.0f;
-    float centerY = 32.0f;
-    graphics.TranslateTransform(centerX, centerY);
-    graphics.ScaleTransform(m_currentScale, m_currentScale);
-    graphics.TranslateTransform(-centerX, -centerY);
-
     // 2. Draw Soft Drop Shadows
     Gdiplus::GraphicsPath pathShadow;
     Gdiplus::RectF rectShadow1(badgeX, badgeY + 1.5f, badgeW, badgeH + 0.5f);
@@ -450,7 +466,7 @@ void IndicatorWindow::Render() {
     graphics.DrawPath(&penBorder, &pathBadge);
 
     // 5. Draw Text (Crisp Typography)
-    const wchar_t* pText = (m_colorLerp < 0.5f) ? L"E" : L"\uD55C";  // 한 (U+D55C)
+    const wchar_t* pText = m_isKorean ? L"\uD55C" : L"E";  // 한 (U+D55C)
     Gdiplus::Font font(L"Segoe UI", 9.5f, Gdiplus::FontStyleBold, Gdiplus::UnitPoint);
     
     // Center alignment

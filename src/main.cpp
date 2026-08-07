@@ -6,6 +6,9 @@
 #define WM_TRAY_CALLBACK (WM_USER + 100)
 #define TRAY_ICON_ID 1
 
+const wchar_t* const SETTINGS_REGISTRY_KEY = L"Software\\CursorIMEIndicator";
+const wchar_t* const ALWAYS_SHOW_VALUE_NAME = L"AlwaysShow";
+
 // Global Pointer to the Indicator Window
 IndicatorWindow* g_pIndicatorWindow = nullptr;
 
@@ -38,6 +41,30 @@ void RegisterStartup(bool registerIt) {
         } else {
             RegDeleteValueW(hKey, L"CursorIMEIndicator");
         }
+        RegCloseKey(hKey);
+    }
+}
+
+bool IsAlwaysShowSaved() {
+    HKEY hKey;
+    DWORD value = 0;
+    DWORD size = sizeof(value);
+    bool isEnabled = false;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, SETTINGS_REGISTRY_KEY, 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+        if (RegQueryValueExW(hKey, ALWAYS_SHOW_VALUE_NAME, NULL, NULL, (LPBYTE)&value, &size) == ERROR_SUCCESS) {
+            isEnabled = value != 0;
+        }
+        RegCloseKey(hKey);
+    }
+    return isEnabled;
+}
+
+void SaveAlwaysShow(bool enabled) {
+    HKEY hKey;
+    DWORD disposition;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, SETTINGS_REGISTRY_KEY, 0, NULL, 0, KEY_SET_VALUE, NULL, &hKey, &disposition) == ERROR_SUCCESS) {
+        DWORD value = enabled ? 1 : 0;
+        RegSetValueExW(hKey, ALWAYS_SHOW_VALUE_NAME, 0, REG_DWORD, (const BYTE*)&value, sizeof(value));
         RegCloseKey(hKey);
     }
 }
@@ -117,6 +144,9 @@ LRESULT CALLBACK BackgroundWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
                 
                 bool isStartup = IsStartupRegistered();
                 AppendMenuW(hMenu, MF_STRING | (isStartup ? MF_CHECKED : MF_UNCHECKED), 102, L"윈도우 시작 시 자동 실행");
+
+                bool isAlwaysShow = g_pIndicatorWindow ? g_pIndicatorWindow->IsAlwaysShow() : false;
+                AppendMenuW(hMenu, MF_STRING | (isAlwaysShow ? MF_CHECKED : MF_UNCHECKED), 105, L"항상 한영 상태 표시");
                 
                 AppendMenuW(hMenu, MF_SEPARATOR, 0, NULL);
                 AppendMenuW(hMenu, MF_STRING, 103, L"정보 (About)...");
@@ -148,9 +178,16 @@ LRESULT CALLBACK BackgroundWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
         case 102: // Toggle Auto Start
             RegisterStartup(!IsStartupRegistered());
             break;
+        case 105: // Toggle Always Show
+            if (g_pIndicatorWindow) {
+                bool alwaysShow = !g_pIndicatorWindow->IsAlwaysShow();
+                g_pIndicatorWindow->SetAlwaysShow(alwaysShow);
+                SaveAlwaysShow(alwaysShow);
+            }
+            break;
         case 103: // About Dialog
             MessageBoxW(hWnd, 
-                L"Cursor IME Indicator v1.0\n"
+                L"Cursor IME Indicator v1.1\n"
                 L"Copyright (c) 2026 jintaeks@gmail.com\n\n"
                 L"마우스 커서의 모양을 그대로 유지하면서,\n"
                 L"입력기 상태(한글 '한' / 영문 'E')를 실시간으로 보여주는 유틸리티입니다.\n\n"
@@ -231,6 +268,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     // 4. Create and Show the layered Indicator Window
     g_pIndicatorWindow = new IndicatorWindow();
     if (g_pIndicatorWindow->Create(hInstance)) {
+        g_pIndicatorWindow->SetAlwaysShow(IsAlwaysShowSaved());
         g_pIndicatorWindow->Show(true);
     }
 
