@@ -187,7 +187,7 @@ LRESULT CALLBACK BackgroundWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
             break;
         case 103: // About Dialog
             MessageBoxW(hWnd, 
-                L"Cursor IME Indicator v1.1\n"
+                L"Cursor IME Indicator v1.2\n"
                 L"Copyright (c) 2026 jintaeks@gmail.com\n\n"
                 L"마우스 커서의 모양을 그대로 유지하면서,\n"
                 L"입력기 상태(한글 '한' / 영문 'E')를 실시간으로 보여주는 유틸리티입니다.\n\n"
