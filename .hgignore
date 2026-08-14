@@ -6,3 +6,4 @@ Release/*
 CursorIMEIndicator.vcxproj.user
 documents/desktop.ini
 .git/*
+desktop.ini
