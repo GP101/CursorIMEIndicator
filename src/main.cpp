@@ -191,8 +191,8 @@ LRESULT CALLBACK BackgroundWndProc(HWND hWnd, UINT message, WPARAM wParam, LPARA
                 L"Copyright (c) 2026 jintaeks@gmail.com\n\n"
                 L"마우스 커서의 모양을 그대로 유지하면서,\n"
                 L"입력기 상태(한글 '한' / 영문 'E')를 실시간으로 보여주는 유틸리티입니다.\n\n"
-                L"• 60 FPS 부드러운 전환 효과\n"
-                L"• 2초 동안 움직임이 없으면 자동 숨김\n"
+                L"• 한/영 전환 또는 포커스 변경 시 2초간 표시\n"
+                L"• 마우스 이동 시 자동 숨김\n"
                 L"• 완벽한 클릭 관통(Click-Through) 지원",
                 L"정보 (About)", MB_OK | MB_ICONINFORMATION);
             break;
