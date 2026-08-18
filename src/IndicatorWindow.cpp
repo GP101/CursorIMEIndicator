@@ -51,6 +51,7 @@ IndicatorWindow::IndicatorWindow()
     , m_cachedCursorXHotspot(0)
     , m_cachedCursorYHotspot(0)
     , m_lastImeCheckTime(0)
+    , m_pendingImeRecheckTime(0)
     , m_currentTimerInterval(TIMER_INTERVAL_POLL)
     , m_hdcBadgeKorean(NULL)
     , m_hBmpBadgeKorean(NULL)
@@ -316,12 +317,25 @@ void IndicatorWindow::OnTimerTick() {
     // just at a lower rate.
     bool focusOrForegroundChanged = (hwndFocus != m_lastFocusWnd && hwndFocus != NULL) ||
                                      (hwndForeground != m_lastForegroundWnd && hwndForeground != NULL);
+
+    // When focus/foreground just changed, schedule a deferred re-check ~200 ms from now.
+    // Windows Terminal (ConPTY) and some other apps update their IME state asynchronously after
+    // the focus event, so the first query can return a stale value.
+    if (focusOrForegroundChanged) {
+        m_pendingImeRecheckTime = now + 200;
+    }
+
     bool shouldCheckIme = focusOrForegroundChanged ||
                           m_targetAlpha > 0.0f ||
+                          (m_pendingImeRecheckTime != 0 && now >= m_pendingImeRecheckTime) ||
                           (now - m_lastImeCheckTime >= IME_CHECK_INTERVAL_MS);
 
     bool imeChanged = false;
     if (shouldCheckIme) {
+        // Clear the pending re-check once we service it.
+        if (m_pendingImeRecheckTime != 0 && now >= m_pendingImeRecheckTime) {
+            m_pendingImeRecheckTime = 0;
+        }
         m_lastImeCheckTime = now;
         bool currentKorean = IMEDetector::IsKoreanMode();
         imeChanged = (currentKorean != m_isKorean);

@@ -72,6 +72,10 @@ private:
     // is showing, otherwise only every IME_CHECK_INTERVAL_MS (SendMessageTimeout is a cross-process
     // synchronous call and can block for up to 250ms if the target is unresponsive).
     ULONGLONG m_lastImeCheckTime;
+    // Deferred re-check: after a focus/foreground change the target app (e.g. Windows Terminal)
+    // may not have updated its IME state yet. We schedule a second query ~200 ms later to catch
+    // the correct state once the window has fully activated.
+    ULONGLONG m_pendingImeRecheckTime; // 0 = none pending
     static const UINT IME_CHECK_INTERVAL_MS = 300;
 
     // Timer Interval Settings
